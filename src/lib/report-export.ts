@@ -270,76 +270,154 @@ export async function makeXlsx({ report, chart, title, rangeText }: ExportInput)
 
 type BlankChart = ReturnType<typeof buildBlankChart>;
 
+/** Blank chart pages drawn exactly like the filled namaz takip çizelgesi, only with empty cells. */
+function blankChartPdfPages(doc: Pdf, chart: BlankChart, days: string[], label: string, first: boolean) {
+  const W = 297, L = 10, R = 10, C = chart.columns.length;
+  const noW = 7, nameW = 44, cntW = 11;
+  const rowChunks: number[][] = [];
+  for (let i = 0; i < Math.max(1, chart.rows.length); i += ROWS_PER_PAGE) rowChunks.push(chart.rows.slice(i, i + ROWS_PER_PAGE).map((_, k) => i + k));
+  let firstPage = first;
+  for (const rows of rowChunks) {
+    if (!firstPage) doc.addPage("a4", "landscape");
+    firstPage = false;
+    doc.setFont("DejaVu", "bold"); doc.setFontSize(10); doc.setTextColor(34, 99, 74);
+    doc.text(label.toLocaleUpperCase("tr"), 10, 7);
+    doc.text(label.toLocaleUpperCase("tr"), 287, 7, { align: "right" });
+    const vw = Math.min(4.2, (W - L - R - noW - nameW - 2 * cntW) / Math.max(1, days.length * C));
+    const tableW = noW + nameW + days.length * C * vw + 2 * cntW;
+    const x0 = L + (W - L - R - tableW) / 2;
+    const xv = x0 + noW + nameW, xc = xv + days.length * C * vw;
+    const yT = 10, yD = 18, yV = 24, yH = 42, rh = 5.6;
+    doc.setDrawColor(0); doc.setLineWidth(0.2); doc.setTextColor(0);
+    doc.rect(x0, yT, tableW, yD - yT);
+    doc.setFont("DejaVu", "bold"); doc.setFontSize(12);
+    doc.text(`${label.toLocaleUpperCase("tr")} · NAMAZ TAKİP ÇİZELGESİ`, x0 + tableW / 2, yT + 5.6, { align: "center" });
+    days.forEach((d, k) => {
+      const x = xv + k * C * vw;
+      doc.setFillColor(229, 241, 235);
+      doc.rect(x, yD, C * vw, yV - yD, "FD");
+      doc.setFontSize(Math.min(7.5, C * vw * 0.42)); doc.setFont("DejaVu", "bold");
+      doc.text(`${d.slice(8, 10)}.${d.slice(5, 7)}`, x + (C * vw) / 2, yD + 4.1, { align: "center" });
+      chart.columns.forEach((v, j) => {
+        const cx = x + j * vw;
+        doc.rect(cx, yV, vw, yH - yV);
+        doc.setFontSize(Math.min(6, vw * 1.7));
+        doc.text(v.toLocaleUpperCase("tr"), cx + vw / 2 + 0.9, yH - 1.5, { angle: 90 });
+      });
+    });
+    doc.rect(x0, yD, noW, yH - yD); doc.rect(x0 + noW, yD, nameW, yH - yD);
+    doc.setFontSize(7.5);
+    doc.text("NO", x0 + noW / 2, yH - 2, { align: "center" });
+    doc.text("ADI SOYADI", x0 + noW + nameW / 2, yH - 2, { align: "center" });
+    doc.text("NAMAZ", x0 + noW + nameW / 2, yV + 6, { align: "center" });
+    (["KATILDIĞI GÜN", "KATILMADIĞI GÜN"] as const).forEach((h, j) => {
+      const x = xc + j * cntW;
+      if (j) doc.setFillColor(250, 230, 230); else doc.setFillColor(229, 241, 235);
+      doc.rect(x, yD, cntW, yH - yD, "FD");
+      doc.setFontSize(6.3);
+      const [a, b] = h.split(" ");
+      doc.text(a!, x + cntW / 2 - 0.6, yH - 2, { angle: 90 });
+      doc.text(b!, x + cntW / 2 + 2.9, yH - 2, { angle: 90 });
+    });
+    rows.forEach((ri, k) => {
+      const r = chart.rows[ri]!;
+      const y = yH + k * rh;
+      doc.setTextColor(0); doc.setFont("DejaVu", "normal"); doc.setFontSize(7.5);
+      doc.rect(x0, y, noW, rh); doc.text(String(ri + 1), x0 + noW / 2, y + 3.9, { align: "center" });
+      doc.rect(x0 + noW, y, nameW, rh);
+      doc.setFont("DejaVu", "bold"); doc.setFontSize(7);
+      const nm = doc.splitTextToSize(r.name, nameW - 2) as string[];
+      doc.text(nm[0]!, x0 + noW + 1, y + 3.8);
+      days.forEach((_, kk) => chart.columns.forEach((_, j) => doc.rect(xv + (kk * C + j) * vw, y, vw, rh)));
+      doc.rect(xc, y, cntW, rh); doc.rect(xc + cntW, y, cntW, rh);
+    });
+    doc.setTextColor(0);
+  }
+}
+
 /** Seven-day blocks keep six writable cells per date legible on A4 landscape. */
 export async function makeBlankPdf(chart: BlankChart): Promise<Blob> {
-  const [{ jsPDF }, { default: autoTable }, [regular, bold]] = await Promise.all([import("jspdf"), import("jspdf-autotable"), loadFonts()]);
+  const [{ jsPDF }, [regular, bold]] = await Promise.all([import("jspdf"), loadFonts()]);
   const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "landscape" });
   doc.addFileToVFS("DejaVuSans.ttf", regular); doc.addFont("DejaVuSans.ttf", "DejaVu", "normal");
   doc.addFileToVFS("DejaVuSans-Bold.ttf", bold); doc.addFont("DejaVuSans-Bold.ttf", "DejaVu", "bold");
+  let first = true;
   for (let offset = 0; offset < chart.days.length; offset += 7) {
-    if (offset) doc.addPage("a4", "landscape");
     const days = chart.days.slice(offset, offset + 7);
     const start = days[0], end = days.at(-1);
     if (!start || !end) continue;
-    const heading = () => {
-      doc.setFont("DejaVu", "bold"); doc.setFontSize(16); doc.setTextColor(34, 99, 74);
-      doc.text("SİEC", 10, 10);
-      doc.setFontSize(9); doc.text("Talebe Takip Paneli · Boş Yoklama Çizelgesi", 10, 16);
-      doc.setFont("DejaVu", "normal"); doc.setFontSize(9); doc.setTextColor(0);
-      doc.text(rangeLabel({ start, end }), 287, 14, { align: "right" });
-    };
-    const cellWidth = (277 - 8 - 51) / (days.length * chart.columns.length);
-    autoTable(doc, {
-      startY: 22, margin: { top: 22, bottom: 14, left: 10, right: 10 }, theme: "grid",
-      styles: { font: "DejaVu", fontSize: 6, lineColor: 0, lineWidth: 0.15, cellPadding: 1, halign: "center", valign: "middle", minCellHeight: 7 },
-      headStyles: { fillColor: [229, 241, 235], textColor: 0, fontStyle: "bold" },
-      columnStyles: { 0: { cellWidth: 8 }, 1: { cellWidth: 51, halign: "left", fontSize: 8 }, ...Object.fromEntries(days.flatMap((_, d) => chart.columns.map((_, c) => [2 + d * chart.columns.length + c, { cellWidth }]))) },
-      head: [
-        [{ content: "No", rowSpan: 2 }, { content: "Adı Soyadı", rowSpan: 2 }, ...days.map((d) => ({ content: dayLabel(d), colSpan: chart.columns.length }))],
-        days.flatMap(() => chart.columns),
-      ],
-      body: chart.rows.map((r, i) => [String(i + 1), r.name, ...r.days.slice(offset, offset + 7).flat()]),
-      willDrawPage: heading,
-    });
+    blankChartPdfPages(doc, chart, days, rangeLabel({ start, end }), first);
+    first = false;
   }
   for (let i = 1; i <= doc.getNumberOfPages(); i++) {
-    doc.setPage(i); doc.setFont("DejaVu", "normal"); doc.setFontSize(8); doc.setTextColor(0);
-    doc.text("Katılım: ✓ veya +  ·  Katılmadı: boş hücre", 10, 203);
-    doc.text(`SİEC · ${i}/${doc.getNumberOfPages()}`, 287, 203, { align: "right" });
+    doc.setPage(i); doc.setFont("DejaVu", "normal"); doc.setFontSize(8); doc.setTextColor(130);
+    doc.text(`Talebe Takip Paneli · Boş Çizelge · Sayfa ${i}/${doc.getNumberOfPages()}`, 148.5, 203, { align: "center" });
   }
   return doc.output("blob");
 }
 
-export async function makeBlankXlsx(chart: BlankChart): Promise<Blob> {
-  const XLSX = await import("xlsx-js-style");
-  const wb = XLSX.utils.book_new();
+/** Blank çizelge sheet, laid out exactly like the filled namaz takip çizelgesi. */
+function blankChartSheet(XLSX: XL, chart: BlankChart, days: string[], title: string) {
+  const C = chart.columns.length;
+  const first = 2, last = first + days.length * C;
+  const ws: Record<string, unknown> = {};
+  const merges: { s: { r: number; c: number }; e: { r: number; c: number } }[] = [];
   const thin = { style: "thin", color: { rgb: "000000" } };
+  const border = { top: thin, bottom: thin, left: thin, right: thin };
+  const put = (r: number, c: number, v: string | number, s: Record<string, unknown> = {}) => {
+    ws[XLSX.utils.encode_cell({ r, c })] = {
+      v, t: typeof v === "number" ? "n" : "s",
+      s: { border, alignment: { horizontal: "center", vertical: "center", wrapText: true }, font: { name: "Arial", sz: 9 }, ...s },
+    };
+  };
+  const bold = (sz = 9) => ({ font: { name: "Arial", sz, bold: true } });
+  const vert = { alignment: { horizontal: "center", vertical: "center", textRotation: 90 } };
+  const fillG = { fill: { fgColor: { rgb: "E5F1EB" } } };
+
+  for (let c = 0; c <= last + 1; c++) put(0, c, c === 0 ? title.toLocaleUpperCase("tr") : "", bold(12));
+  merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: last + 1 } });
+  put(1, 0, ""); put(1, 1, "");
+  put(2, 0, ""); put(2, 1, "NAMAZ", bold());
+  put(3, 0, "NO", bold()); put(3, 1, "ADI SOYADI", bold());
+  days.forEach((d, i) => {
+    const c0 = first + i * C;
+    for (let k = 0; k < C; k++) {
+      put(1, c0 + k, k ? "" : dayLabel(d), { ...bold(), ...fillG });
+      put(2, c0 + k, chart.columns[k]!.toLocaleUpperCase("tr"), { ...bold(8), ...vert });
+      put(3, c0 + k, "");
+    }
+    merges.push({ s: { r: 1, c: c0 }, e: { r: 1, c: c0 + C - 1 } });
+  });
+  ["KATILDIĞI GÜN", "KATILMADIĞI GÜN"].forEach((h, j) => {
+    for (let r = 1; r <= 3; r++) put(r, last + j, r === 1 ? h : "", { ...bold(8), ...vert, ...(j ? { fill: { fgColor: { rgb: "FAE6E6" } } } : fillG) });
+    merges.push({ s: { r: 1, c: last + j }, e: { r: 3, c: last + j } });
+  });
+
+  chart.rows.forEach((row, i) => {
+    const r = 4 + i;
+    put(r, 0, i + 1);
+    put(r, 1, row.name, { ...bold(8), alignment: { horizontal: "left", vertical: "center" } });
+    days.forEach((_, di) => chart.columns.forEach((_, k) => put(r, first + di * C + k, "")));
+    put(r, last, ""); put(r, last + 1, "");
+  });
+
+  ws["!ref"] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: 3 + Math.max(1, chart.rows.length), c: last + 1 } });
+  ws["!merges"] = merges;
+  ws["!cols"] = [{ wch: 4 }, { wch: 24 }, ...Array.from({ length: last - first }, () => ({ wch: 3 })), { wch: 6 }, { wch: 6 }];
+  ws["!rows"] = [{ hpt: 24 }, { hpt: 18 }, { hpt: 52 }, { hpt: 16 }];
+  return ws;
+}
+
+export async function makeBlankXlsx(chart: BlankChart): Promise<Blob> {
+  const XLSX = (await import("xlsx-js-style")) as unknown as XL & typeof import("xlsx");
+  const wb = XLSX.utils.book_new();
   for (let offset = 0; offset < chart.days.length; offset += 7) {
-    const days = chart.days.slice(offset, offset + 7), width = 2 + days.length * chart.columns.length;
+    const days = chart.days.slice(offset, offset + 7);
     const start = days[0], end = days.at(-1);
     if (!start || !end) continue;
-    const ws = XLSX.utils.aoa_to_sheet([
-      ["SİEC · Talebe Takip Paneli · Boş Yoklama Çizelgesi"], [rangeLabel({ start, end })],
-      ["No", "Adı Soyadı", ...days.flatMap((d) => [dayLabel(d), ...chart.columns.slice(1).map(() => "")])],
-      ["", "", ...days.flatMap(() => chart.columns)],
-      ...chart.rows.map((r, i) => [i + 1, r.name, ...r.days.slice(offset, offset + 7).flat()]),
-      ["Katılım: ✓ veya + · Katılmadı: boş hücre"],
-    ]);
-    const merges = [0, 1, chart.rows.length + 4].map((r) => ({ s: { r, c: 0 }, e: { r, c: width - 1 } }));
-    merges.push(...days.map((_, i) => ({ s: { r: 2, c: 2 + i * chart.columns.length }, e: { r: 2, c: 1 + (i + 1) * chart.columns.length } })));
-    for (let r = 0; r < chart.rows.length + 5; r++) for (let c = 0; c < width; c++) {
-      const key = XLSX.utils.encode_cell({ r, c });
-      const cell = ws[key] ?? { v: "", t: "s" };
-      cell.s = { font: { name: "Arial", sz: r === 0 ? 14 : 9, bold: r < 4 }, alignment: { horizontal: c === 1 ? "left" : "center", vertical: "center", wrapText: true, ...(r === 3 && c >= 2 ? { textRotation: 90 } : {}) }, ...(r >= 2 && r < chart.rows.length + 4 ? { border: { top: thin, bottom: thin, left: thin, right: thin } } : {}), ...(r === 2 || r === 3 ? { fill: { fgColor: { rgb: "E5F1EB" } } } : {}) };
-      ws[key] = cell;
-    }
-    ws["!merges"] = merges;
-    ws["!cols"] = [{ wch: 4 }, { wch: 28 }, ...days.flatMap(() => chart.columns.map(() => ({ wch: 3.5 })))];
-    ws["!rows"] = [{ hpt: 26 }, { hpt: 22 }, { hpt: 22 }, { hpt: 45 }, ...chart.rows.map(() => ({ hpt: 26 }))];
-    ws["!ref"] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: chart.rows.length + 4, c: width - 1 } });
-    XLSX.utils.book_append_sheet(wb, ws, `Çizelge ${Math.floor(offset / 7) + 1}`);
+    XLSX.utils.book_append_sheet(wb, blankChartSheet(XLSX, chart, days, `${rangeLabel({ start, end })} · Namaz Takip Çizelgesi`) as never, `Çizelge ${Math.floor(offset / 7) + 1}`);
   }
-  return new Blob([XLSX.write(wb, { bookType: "xlsx", type: "array" })], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  return new Blob([XLSX.write(wb, { bookType: "xlsx", type: "array" }) as ArrayBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
 }
 
 export function downloadBlob(blob: Blob, filename: string) {
