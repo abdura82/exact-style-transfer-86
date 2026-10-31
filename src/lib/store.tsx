@@ -32,9 +32,14 @@ export type AttendanceRow = {
   id: string;
   studentId: string;
   date: string;
+  /** Vakit the student came to on time. */
   vakitler: string[];
+  /** Came to the lesson on time. */
   ders: boolean;
+  /** Whole-day status from old records; new records keep "normal" and use `durumlar`. */
   durum: "normal" | "izinli" | "gec";
+  /** Per vakit/"Ders" status: Geç, İzinli or Hasta. A cell is never both here and in `vakitler`. */
+  durumlar?: Partial<Record<string, "gec" | "izinli" | "hasta">>;
 };
 
 type Store = {
