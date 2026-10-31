@@ -273,25 +273,23 @@ type BlankChart = ReturnType<typeof buildBlankChart>;
 /** Blank chart pages drawn exactly like the filled namaz takip çizelgesi, only with empty cells. */
 function blankChartPdfPages(doc: Pdf, chart: BlankChart, days: string[], label: string, first: boolean) {
   const W = 297, L = 10, R = 10, C = chart.columns.length;
-  const noW = 7, nameW = 44, cntW = 11;
+  const noW = 6, nameW = 38, cntW = 8, PER = 54;
   const rowChunks: number[][] = [];
-  for (let i = 0; i < Math.max(1, chart.rows.length); i += ROWS_PER_PAGE) rowChunks.push(chart.rows.slice(i, i + ROWS_PER_PAGE).map((_, k) => i + k));
+  for (let i = 0; i < Math.max(1, chart.rows.length); i += PER) rowChunks.push(chart.rows.slice(i, i + PER).map((_, k) => i + k));
   let firstPage = first;
   for (const rows of rowChunks) {
     if (!firstPage) doc.addPage("a4", "landscape");
     firstPage = false;
-    doc.setFont("DejaVu", "bold"); doc.setFontSize(10); doc.setTextColor(34, 99, 74);
-    doc.text(label.toLocaleUpperCase("tr"), 10, 7);
-    doc.text(label.toLocaleUpperCase("tr"), 287, 7, { align: "right" });
     const vw = Math.min(4.2, (W - L - R - noW - nameW - 2 * cntW) / Math.max(1, days.length * C));
     const tableW = noW + nameW + days.length * C * vw + 2 * cntW;
     const x0 = L + (W - L - R - tableW) / 2;
     const xv = x0 + noW + nameW, xc = xv + days.length * C * vw;
-    const yT = 10, yD = 18, yV = 24, yH = 42, rh = 5.6;
+    const yT = 5, yD = 11, yV = 16, yH = 30, rh = Math.min(5.6, (199 - yH) / Math.max(1, rows.length));
+    const fs = Math.min(7.5, rh * 2.3);
     doc.setDrawColor(0); doc.setLineWidth(0.2); doc.setTextColor(0);
     doc.rect(x0, yT, tableW, yD - yT);
-    doc.setFont("DejaVu", "bold"); doc.setFontSize(12);
-    doc.text(`${label.toLocaleUpperCase("tr")} · NAMAZ TAKİP ÇİZELGESİ`, x0 + tableW / 2, yT + 5.6, { align: "center" });
+    doc.setFont("DejaVu", "bold"); doc.setFontSize(11);
+    doc.text(`${label.toLocaleUpperCase("tr")} · NAMAZ TAKİP ÇİZELGESİ`, x0 + tableW / 2, yT + 4.3, { align: "center" });
     days.forEach((d, k) => {
       const x = xv + k * C * vw;
       doc.setFillColor(229, 241, 235);
@@ -314,20 +312,20 @@ function blankChartPdfPages(doc: Pdf, chart: BlankChart, days: string[], label: 
       const x = xc + j * cntW;
       if (j) doc.setFillColor(250, 230, 230); else doc.setFillColor(229, 241, 235);
       doc.rect(x, yD, cntW, yH - yD, "FD");
-      doc.setFontSize(6.3);
+      doc.setFontSize(5.2);
       const [a, b] = h.split(" ");
-      doc.text(a!, x + cntW / 2 - 0.6, yH - 2, { angle: 90 });
-      doc.text(b!, x + cntW / 2 + 2.9, yH - 2, { angle: 90 });
+      doc.text(a!, x + cntW / 2 - 0.4, yH - 2, { angle: 90 });
+      doc.text(b!, x + cntW / 2 + 2.2, yH - 2, { angle: 90 });
     });
     rows.forEach((ri, k) => {
       const r = chart.rows[ri]!;
       const y = yH + k * rh;
-      doc.setTextColor(0); doc.setFont("DejaVu", "normal"); doc.setFontSize(7.5);
-      doc.rect(x0, y, noW, rh); doc.text(String(ri + 1), x0 + noW / 2, y + 3.9, { align: "center" });
+      doc.setTextColor(0); doc.setFont("DejaVu", "normal"); doc.setFontSize(fs);
+      doc.rect(x0, y, noW, rh); doc.text(String(ri + 1), x0 + noW / 2, y + rh * 0.7, { align: "center" });
       doc.rect(x0 + noW, y, nameW, rh);
-      doc.setFont("DejaVu", "bold"); doc.setFontSize(7);
+      doc.setFont("DejaVu", "bold"); doc.setFontSize(fs * 0.93);
       const nm = doc.splitTextToSize(r.name, nameW - 2) as string[];
-      doc.text(nm[0]!, x0 + noW + 1, y + 3.8);
+      doc.text(nm[0]!, x0 + noW + 1, y + rh * 0.7);
       days.forEach((_, kk) => chart.columns.forEach((_, j) => doc.rect(xv + (kk * C + j) * vw, y, vw, rh)));
       doc.rect(xc, y, cntW, rh); doc.rect(xc + cntW, y, cntW, rh);
     });
@@ -335,15 +333,15 @@ function blankChartPdfPages(doc: Pdf, chart: BlankChart, days: string[], label: 
   }
 }
 
-/** Seven-day blocks keep six writable cells per date legible on A4 landscape. */
+/** 15-day blocks with up to 54 students fit one A4 landscape page each. */
 export async function makeBlankPdf(chart: BlankChart): Promise<Blob> {
   const [{ jsPDF }, [regular, bold]] = await Promise.all([import("jspdf"), loadFonts()]);
   const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "landscape" });
   doc.addFileToVFS("DejaVuSans.ttf", regular); doc.addFont("DejaVuSans.ttf", "DejaVu", "normal");
   doc.addFileToVFS("DejaVuSans-Bold.ttf", bold); doc.addFont("DejaVuSans-Bold.ttf", "DejaVu", "bold");
   let first = true;
-  for (let offset = 0; offset < chart.days.length; offset += 7) {
-    const days = chart.days.slice(offset, offset + 7);
+  for (let offset = 0; offset < chart.days.length; offset += 15) {
+    const days = chart.days.slice(offset, offset + 15);
     const start = days[0], end = days.at(-1);
     if (!start || !end) continue;
     blankChartPdfPages(doc, chart, days, rangeLabel({ start, end }), first);
@@ -411,11 +409,11 @@ function blankChartSheet(XLSX: XL, chart: BlankChart, days: string[], title: str
 export async function makeBlankXlsx(chart: BlankChart): Promise<Blob> {
   const XLSX = (await import("xlsx-js-style")) as unknown as XL & typeof import("xlsx");
   const wb = XLSX.utils.book_new();
-  for (let offset = 0; offset < chart.days.length; offset += 7) {
-    const days = chart.days.slice(offset, offset + 7);
+  for (let offset = 0; offset < chart.days.length; offset += 15) {
+    const days = chart.days.slice(offset, offset + 15);
     const start = days[0], end = days.at(-1);
     if (!start || !end) continue;
-    XLSX.utils.book_append_sheet(wb, blankChartSheet(XLSX, chart, days, `${rangeLabel({ start, end })} · Namaz Takip Çizelgesi`) as never, `Çizelge ${Math.floor(offset / 7) + 1}`);
+    XLSX.utils.book_append_sheet(wb, blankChartSheet(XLSX, chart, days, `${rangeLabel({ start, end })} · Namaz Takip Çizelgesi`) as never, `Çizelge ${Math.floor(offset / 15) + 1}`);
   }
   return new Blob([XLSX.write(wb, { bookType: "xlsx", type: "array" }) as ArrayBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
 }
