@@ -78,12 +78,12 @@ describe("buildChart (namaz takip çizelgesi)", () => {
     expect(chartByMonth(chart)[0]?.rows[0]).toMatchObject({ katildi: 1, katilmadi: 1 });
   });
   const st = [{ id: "a", name: "Ali" }, { id: "b", name: "Bekir" }] as never[];
-  const row = (studentId: string, date: string, vakitler: string[], durum = "normal") => ({ id: studentId + date, studentId, date, vakitler, ders: false, durum }) as never;
+  const chartRow = (studentId: string, date: string, vakitler: string[], durum = "normal") => ({ id: studentId + date, studentId, date, vakitler, ders: false, durum }) as never;
   const c = buildChart(st, [
-    row("a", "2026-10-01", ["Sabah", "Öğle"]),
-    row("a", "2026-10-02", []),
-    row("b", "2026-10-01", [], "izinli"),
-    row("a", "2026-10-03", ["Yatsı"]),
+    chartRow("a", "2026-10-01", ["Sabah", "Öğle"]),
+    chartRow("a", "2026-10-02", []),
+    chartRow("b", "2026-10-01", [], "izinli"),
+    chartRow("a", "2026-10-03", ["Yatsı"]),
   ]);
   it("ticks prayed vakit and marks the rest with X", () => {
     expect(c.rows[0]!.days[0]).toEqual(["✓", "✓", "X", "X", "X"]);

@@ -36,7 +36,7 @@ function Yoklama() {
 
   useEffect(() => {
     const m: Record<string, Row> = {};
-    for (const a of attendance.filter((x) => x.date === date)) m[a.studentId] = { vakitler: a.vakitler, ders: a.ders, durum: a.durum, durumlar: a.durumlar };
+    for (const a of attendance.filter((x) => x.date === date)) m[a.studentId] = { vakitler: a.vakitler, ders: a.ders, durum: a.durum, ...(a.durumlar ? { durumlar: a.durumlar } : {}) };
     setMarks(m);
   }, [date, attendance]);
 

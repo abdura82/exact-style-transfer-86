@@ -17,7 +17,7 @@ describe("stats", () => {
     const r = setCellStatus(setCellStatus(empty, "Akşam", "geldi"), "Akşam", "gec");
     expect(r.vakitler).toEqual([]);
     expect(cellStatus(r, "Akşam")).toBe("gec");
-    expect(dayResult(r)).toBe("katildi");
+    expect(dayResult({ ...r, id: "late", studentId: "s", date: "2026-11-01" })).toBe("katildi");
   });
   it("permission replaces attendance", () => {
     const r = setCellStatus(setCellStatus(empty, "Akşam", "geldi"), "Akşam", "izinli");
