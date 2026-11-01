@@ -60,13 +60,30 @@ describe("file names", () => {
 });
 
 describe("buildChart (namaz takip çizelgesi)", () => {
+  it("exports G, İ, H and X for separate prayer cells", () => {
+    const students = [{ id: "s1", name: "Ali" }] as Student[];
+    const r = { ...row("new", "2026-11-01", []), durumlar: { Sabah: "gec", Akşam: "izinli", Yatsı: "hasta", Ders: "hasta" } as const };
+    expect(buildChart(students, [r]).rows[0]?.days).toEqual([["G", "X", "X", "İ", "H"]]);
+    expect(buildReport(students, [r]).detail[0]).toMatchObject({ vakitler: ["G", "X", "X", "İ", "H"], ders: "H" });
+    expect(buildReport(students, [r]).summary[0]).toMatchObject({ kilinan: 1, gec: 1, izinli: 1, hasta: 1 });
+  });
+  it("fills attended and missed totals including late and mixed excuses", () => {
+    const students = [{ id: "s1", name: "Ali" }] as Student[];
+    const chart = buildChart(students, [
+      { ...row("late", "2026-11-01", []), durumlar: { Akşam: "gec" } },
+      { ...row("partial", "2026-11-02", []), durumlar: { Akşam: "izinli" } },
+      { ...row("excused", "2026-11-03", []), durumlar: { Sabah: "hasta", Öğle: "izinli", İkindi: "hasta", Akşam: "izinli", Yatsı: "hasta" } },
+    ]);
+    expect(chart.rows[0]).toMatchObject({ katildi: 1, katilmadi: 1 });
+    expect(chartByMonth(chart)[0]?.rows[0]).toMatchObject({ katildi: 1, katilmadi: 1 });
+  });
   const st = [{ id: "a", name: "Ali" }, { id: "b", name: "Bekir" }] as never[];
-  const row = (studentId: string, date: string, vakitler: string[], durum = "normal") => ({ id: studentId + date, studentId, date, vakitler, ders: false, durum }) as never;
+  const chartRow = (studentId: string, date: string, vakitler: string[], durum = "normal") => ({ id: studentId + date, studentId, date, vakitler, ders: false, durum }) as never;
   const c = buildChart(st, [
-    row("a", "2026-10-01", ["Sabah", "Öğle"]),
-    row("a", "2026-10-02", []),
-    row("b", "2026-10-01", [], "izinli"),
-    row("a", "2026-10-03", ["Yatsı"]),
+    chartRow("a", "2026-10-01", ["Sabah", "Öğle"]),
+    chartRow("a", "2026-10-02", []),
+    chartRow("b", "2026-10-01", [], "izinli"),
+    chartRow("a", "2026-10-03", ["Yatsı"]),
   ]);
   it("ticks prayed vakit and marks the rest with X", () => {
     expect(c.rows[0]!.days[0]).toEqual(["✓", "✓", "X", "X", "X"]);

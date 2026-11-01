@@ -1,5 +1,5 @@
 import type { AttendanceRow, Student } from "./store";
-import { VAKITLER } from "./stats";
+import { VAKITLER, CELL_LETTER, CELL_LABEL, cellStatus, came, computeStats, dayResult } from "./stats";
 
 export type Period = "gunluk" | "haftalik" | "aylik" | "yillik" | "tumu";
 
@@ -68,7 +68,7 @@ export function filterRows(rows: AttendanceRow[], range: Range, studentId?: stri
   return rows.filter((r) => r.date >= range.start && r.date <= range.end && (!studentId || r.studentId === studentId));
 }
 
-const DURUM: Record<AttendanceRow["durum"], string> = { normal: "Normal", gec: "Geç Kaldı", izinli: "İzinli" };
+
 
 export type SummaryRow = {
   name: string;
@@ -80,6 +80,7 @@ export type SummaryRow = {
   dersYuzde: number;
   gec: number;
   izinli: number;
+  hasta: number;
 };
 
 const pct = (a: number, b: number) => (b ? Math.round((a / b) * 100) : 0);
@@ -96,8 +97,9 @@ export function buildReport(students: Student[], rows: AttendanceRow[]) {
     .filter((s) => byStudent.has(s.id))
     .map((s) => {
       const list = byStudent.get(s.id)!;
-      const kilinan = list.reduce((a, r) => a + r.vakitler.length, 0);
-      const ders = list.filter((r) => r.ders).length;
+      const stats = computeStats(list);
+      const kilinan = list.reduce((a, r) => a + VAKITLER.filter((v) => came(cellStatus(r, v))).length, 0);
+      const ders = stats.ders;
       return {
         name: s.name,
         gun: list.length,
@@ -106,8 +108,9 @@ export function buildReport(students: Student[], rows: AttendanceRow[]) {
         namazYuzde: pct(kilinan, list.length * VAKITLER.length),
         ders,
         dersYuzde: pct(ders, list.length),
-        gec: list.filter((r) => r.durum === "gec").length,
-        izinli: list.filter((r) => r.durum === "izinli").length,
+        gec: stats.gec,
+        izinli: stats.izinli,
+        hasta: stats.hasta,
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name, "tr"));
@@ -117,9 +120,9 @@ export function buildReport(students: Student[], rows: AttendanceRow[]) {
     .map((r) => ({
       date: r.date,
       name: nameOf.get(r.studentId)!,
-      vakitler: VAKITLER.map((v) => r.vakitler.includes(v)),
-      ders: r.ders,
-      durum: DURUM[r.durum],
+      vakitler: VAKITLER.map((v) => CELL_LETTER[cellStatus(r, v)]),
+      ders: CELL_LETTER[cellStatus(r, "Ders")],
+      durum: [...new Set([...VAKITLER, "Ders"].map((v) => cellStatus(r, v)).filter((s) => s !== "geldi" && s !== "yok").map((s) => CELL_LABEL[s]))].join(", ") || (r.durum === "gec" ? "Geç" : "Normal"),
     }))
     .sort((a, b) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name, "tr"));
 
@@ -143,13 +146,13 @@ export function fileSlug(s: string) {
   );
 }
 
-export type ChartMark = "✓" | "X" | "İ";
+export type ChartMark = (typeof CELL_LETTER)[keyof typeof CELL_LETTER];
 export type ChartRow = { name: string; days: ChartMark[][]; katildi: number; katilmadi: number };
 
 /**
  * Namaz takip çizelgesi: one row per student, one 5-vakit block per recorded day.
- * ✓ = kıldı, X = kılmadı (or no record that day), İ = izinli.
- * Katıldığı gün = at least one vakit; katılmadığı gün = no vakit and not izinli.
+ * ✓ = geldi, G = geç, İ = izinli, H = hasta, X = gelmedi.
+ * Katıldığı gün = at least one attended/late prayer; missed = none attended and at least one X.
  */
 export function buildChart(students: Student[], rows: AttendanceRow[]) {
   const ids = new Set(students.map((s) => s.id));
@@ -161,10 +164,10 @@ export function buildChart(students: Student[], rows: AttendanceRow[]) {
       let katildi = 0, katilmadi = 0;
       const marks = days.map((d) => {
         const r = byKey.get(`${s.id}|${d}`);
-        if (r?.durum === "izinli") return VAKITLER.map(() => "İ" as const);
-        const prayed = r ? r.vakitler : [];
-        if (prayed.length) katildi++; else katilmadi++;
-        return VAKITLER.map((v) => (prayed.includes(v) ? "✓" : "X") as ChartMark);
+        const result = dayResult(r);
+        if (result === "katildi") katildi++;
+        if (result === "katilmadi") katilmadi++;
+        return VAKITLER.map((v) => CELL_LETTER[cellStatus(r, v)]);
       });
       return { name: s.name, days: marks, katildi, katilmadi };
     });
@@ -184,8 +187,8 @@ export function chartByMonth(chart: ReturnType<typeof buildChart>) {
       days: idx.map((i) => chart.days[i]!),
       rows: chart.rows.map((r) => {
         const days = idx.map((i) => r.days[i]!);
-        const katildi = days.filter((m) => m.includes("✓")).length;
-        const katilmadi = days.filter((m) => !m.includes("✓") && m[0] !== "İ").length;
+        const katildi = days.filter((m) => m.includes("✓") || m.includes("G")).length;
+        const katilmadi = days.filter((m) => !m.includes("✓") && !m.includes("G") && m.includes("X")).length;
         return { name: r.name, days, katildi, katilmadi };
       }),
     };
