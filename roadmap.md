@@ -1,4 +1,5 @@
 # Tasks
+- [ ] Complete per-cell attendance statuses and PDF/Excel totals; verify saved marks and exports.
 - [ ] Add blank PDF/Excel attendance charts for registered students and verify photo import compatibility.
 - [ ] Show tutanak photos full-width, uncropped and unframed.
 - [ ] Export complete family history with full-page photos and every signed document page.

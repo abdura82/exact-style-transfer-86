@@ -7,7 +7,7 @@ export const COLUMNS = [...VAKITLER, "Ders"] as const;
 export type CellStatus = "geldi" | "gec" | "izinli" | "hasta" | "yok";
 export type CellNote = "gec" | "izinli" | "hasta";
 
-export const CELL_LETTER: Record<CellStatus, string> = { geldi: "✓", gec: "G", izinli: "İ", hasta: "H", yok: "X" };
+export const CELL_LETTER = { geldi: "✓", gec: "G", izinli: "İ", hasta: "H", yok: "X" } as const;
 export const CELL_LABEL: Record<CellStatus, string> = { geldi: "Geldi", gec: "Geç", izinli: "İzinli", hasta: "Hasta", yok: "Gelmedi" };
 
 /** Status of one vakit/ders cell. Each cell has exactly one status. */
@@ -22,6 +22,18 @@ export function cellStatus(r: Pick<AttendanceRow, "vakitler" | "ders" | "durum" 
 }
 
 export const came = (s: CellStatus) => s === "geldi" || s === "gec";
+
+/** Replace one cell, preserving the other cells and normalizing legacy day-wide permission. */
+export function setCellStatus(r: Pick<AttendanceRow, "vakitler" | "ders" | "durum" | "durumlar">, c: string, status: CellStatus) {
+  const durumlar: NonNullable<AttendanceRow["durumlar"]> = {};
+  for (const col of COLUMNS) {
+    const current = col === c ? status : cellStatus(r, col);
+    if (current === "gec" || current === "izinli" || current === "hasta") durumlar[col] = current;
+  }
+  const vakitler = VAKITLER.filter((col) => (col === c ? status : cellStatus(r, col)) === "geldi");
+  const ders = (c === "Ders" ? status : cellStatus(r, "Ders")) === "geldi";
+  return { vakitler, ders, durum: "normal" as const, durumlar };
+}
 
 /** Vakit (or ders) the student came to — on time or late. */
 export const prayedCount = (r: AttendanceRow) => VAKITLER.filter((v) => came(cellStatus(r, v))).length;
@@ -59,7 +71,7 @@ export function monthly(rows: AttendanceRow[]) {
     .sort()
     .slice(-6)
     .map((k) => {
-      const list = by[k]!;
+      const list = by[k] ?? [];
       const vakitSum = list.reduce((a, r) => a + prayedCount(r), 0);
       return {
         key: k,

@@ -10,6 +10,7 @@
 <!-- LOVABLE:END -->
 
 ## Project rules
+- Attendance cells are read and changed through pure helpers in `src/lib/stats.ts`; all views and exports reuse them so per-cell notes and day totals cannot diverge.
 - Attendance report export (PDF via jspdf, Excel via xlsx-js-style because plain SheetJS cannot write borders/rotated text for the namaz takip çizelgesi) lives in `src/lib/report-export.ts` and loads those libraries with dynamic `import()` so they never slow app startup; period/summary logic stays pure in `src/lib/report.ts` with tests.
 - Blank paper charts use a separate pure model in report.ts and the shared BlankAttendanceSheet; six prayer/lesson columns have empty cells and export in 15-day blocks of up to 54 students per A4 page so missing records are never printed as absences and one class fits one sheet.
 - PDFs embed the subset DejaVu fonts in `public/fonts/` because jsPDF's built-in fonts cannot render Turkish letters (ğ, ş, ı, İ).
