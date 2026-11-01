@@ -4,11 +4,11 @@ import { chartByMonth, rangeLabel, type buildBlankChart, type buildChart, type b
 type Report = ReturnType<typeof buildReport>;
 export type ExportInput = { report: Report; chart?: ReturnType<typeof buildChart>; title: string; rangeText: string; fileBase: string };
 
-const SUMMARY_HEAD = ["Talebe", "Gün", "Kılınan Vakit", "Namaz %", "Ders", "Ders %", "Geç", "İzinli"];
+const SUMMARY_HEAD = ["Talebe", "Gün", "Kılınan Vakit", "Namaz %", "Ders", "Ders %", "Geç", "İzinli", "Hasta"];
 const DETAIL_HEAD = ["Tarih", "Talebe", ...VAKITLER, "Ders", "Durum"];
 
 const summaryBody = (r: Report) =>
-  r.summary.map((s) => [s.name, s.gun, `${s.kilinan}/${s.toplamVakit}`, `%${s.namazYuzde}`, s.ders, `%${s.dersYuzde}`, s.gec, s.izinli]);
+  r.summary.map((s) => [s.name, s.gun, `${s.kilinan}/${s.toplamVakit}`, `%${s.namazYuzde}`, s.ders, `%${s.dersYuzde}`, s.gec, s.izinli, s.hasta]);
 
 const dayLabel = (d: string) => `${d.slice(8, 10)}.${d.slice(5, 7)}.${d.slice(0, 4)}`;
 
@@ -161,7 +161,7 @@ export async function makePdf({ report, chart, title, rangeText }: ExportInput):
     ...base,
     startY: y + 3,
     head: [DETAIL_HEAD],
-    body: report.detail.map((d) => [dayLabel(d.date), d.name, ...d.vakitler.map((v) => (v ? "✓" : "–")), d.ders ? "✓" : "–", d.durum]),
+    body: report.detail.map((d) => [dayLabel(d.date), d.name, ...d.vakitler, d.ders, d.durum]),
     columnStyles: Object.fromEntries([2, 3, 4, 5, 6, 7].map((i) => [i, { halign: "center" as const }])),
   });
 
@@ -247,9 +247,9 @@ export async function makeXlsx({ report, chart, title, rangeText }: ExportInput)
     [rangeText],
     [],
     SUMMARY_HEAD,
-    ...report.summary.map((s) => [s.name, s.gun, s.kilinan, s.namazYuzde / 100, s.ders, s.dersYuzde / 100, s.gec, s.izinli]),
+    ...report.summary.map((s) => [s.name, s.gun, s.kilinan, s.namazYuzde / 100, s.ders, s.dersYuzde / 100, s.gec, s.izinli, s.hasta]),
   ]);
-  summary["!cols"] = [{ wch: 24 }, { wch: 7 }, { wch: 13 }, { wch: 10 }, { wch: 7 }, { wch: 9 }, { wch: 7 }, { wch: 8 }];
+  summary["!cols"] = [{ wch: 24 }, { wch: 7 }, { wch: 13 }, { wch: 10 }, { wch: 7 }, { wch: 9 }, { wch: 7 }, { wch: 8 }, { wch: 8 }];
   for (let r = 4; r < 4 + report.summary.length; r++)
     for (const c of ["D", "F"]) {
       const cell = summary[`${c}${r + 1}`];
@@ -259,7 +259,7 @@ export async function makeXlsx({ report, chart, title, rangeText }: ExportInput)
 
   const detail = XLSX.utils.aoa_to_sheet([
     DETAIL_HEAD,
-    ...report.detail.map((d) => [dayLabel(d.date), d.name, ...d.vakitler.map((v) => (v ? "✓" : "")), d.ders ? "✓" : "", d.durum]),
+    ...report.detail.map((d) => [dayLabel(d.date), d.name, ...d.vakitler, d.ders, d.durum]),
   ]);
   detail["!cols"] = [{ wch: 12 }, { wch: 24 }, ...VAKITLER.map(() => ({ wch: 8 })), { wch: 7 }, { wch: 11 }];
   XLSX.utils.book_append_sheet(wb, detail, "Günlük Detay");
